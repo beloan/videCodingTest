@@ -1,8 +1,10 @@
 import React from 'react';
-import { View, FlatList, StyleSheet, TouchableOpacity } from 'react-native';
+import { Platform, View, FlatList, StyleSheet, TouchableOpacity } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text, Card, IconButton, Button } from 'react-native-paper';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../App';
+import { useSubscription } from '../context/SubscriptionContext';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Meditations'>;
 
@@ -12,7 +14,8 @@ type Meditation = {
   duration: string;
   emoji: string;
   color: string;
-  locked: boolean;
+  /** Премиум-сессия: при отсутствии подписки показываем замок */
+  requiresPremium: boolean;
 };
 
 const MEDITATIONS: Meditation[] = [
@@ -22,7 +25,7 @@ const MEDITATIONS: Meditation[] = [
     duration: '10 мин',
     emoji: '🌅',
     color: '#1d4ed8',
-    locked: false,
+    requiresPremium: false,
   },
   {
     id: '2',
@@ -30,7 +33,7 @@ const MEDITATIONS: Meditation[] = [
     duration: '15 мин',
     emoji: '🧠',
     color: '#7c3aed',
-    locked: true,
+    requiresPremium: true,
   },
   {
     id: '3',
@@ -38,12 +41,13 @@ const MEDITATIONS: Meditation[] = [
     duration: '20 мин',
     emoji: '🌙',
     color: '#0f766e',
-    locked: true,
+    requiresPremium: true,
   },
 ];
 
 const MeditationsScreen = ({ navigation }: Props) => {
-  const [hasAccess] = React.useState(true); // toggle to false to simulate no subscription
+  const insets = useSafeAreaInsets();
+  const { isSubscribed } = useSubscription();
 
   const goToPaywall = () => {
     navigation.replace('Paywall');
@@ -54,68 +58,86 @@ const MeditationsScreen = ({ navigation }: Props) => {
   };
 
   return (
-    <View style={styles.root}>
-      <View style={styles.headerRow}>
-        <View>
-          <Text style={styles.greeting}>Добро пожаловать,</Text>
-          <Text style={styles.brand}>ZenPulse</Text>
-        </View>
-        <IconButton icon="cog-outline" iconColor="#9ca3af" />
-      </View>
-
-      <Card style={styles.aiCard} onPress={openAiTuning}>
-        <Card.Content style={styles.aiCardContent}>
+    <View
+      style={[
+        styles.root,
+        {
+          paddingTop: Math.max(insets.top, 8),
+          paddingBottom: Math.max(insets.bottom, 8),
+        },
+      ]}
+    >
+      <View style={styles.contentWrap}>
+        <View style={styles.headerRow}>
           <View>
-            <Text style={styles.aiTitle}>AI «Настрой дня»</Text>
-            <Text style={styles.aiSubtitle}>Подбери аффирмацию под своё настроение</Text>
+            <Text style={styles.greeting}>Добро пожаловать,</Text>
+            <Text style={styles.brand}>ZenPulse</Text>
           </View>
-          <Button mode="contained-tonal" compact>
-            Открыть
-          </Button>
-        </Card.Content>
-      </Card>
+          <IconButton icon="cog-outline" iconColor="#9ca3af" />
+        </View>
 
-      <Text style={styles.sectionTitle}>Сегодняшние медитации</Text>
+        <Card style={styles.aiCard} onPress={openAiTuning}>
+          <Card.Content style={styles.aiCardContent}>
+            <View>
+              <Text style={styles.aiTitle}>AI «Настрой дня»</Text>
+              <Text style={styles.aiSubtitle}>Подбери аффирмацию под своё настроение</Text>
+            </View>
+            <Button mode="contained-tonal" compact>
+              Открыть
+            </Button>
+          </Card.Content>
+        </Card>
 
-      <FlatList
-        data={MEDITATIONS}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={{ paddingBottom: 24 }}
-        renderItem={({ item }) => {
-          const locked = item.locked && !hasAccess;
-          return (
-            <TouchableOpacity onPress={locked ? goToPaywall : undefined}>
-              <Card style={styles.card}>
-                <View
-                  style={[
-                    styles.cardImage,
-                    styles.cardImageRadius,
-                    { backgroundColor: item.color },
-                    locked && styles.cardImageLocked,
-                  ]}
-                >
-                  <Text style={styles.cardEmoji}>{item.emoji}</Text>
-                  {locked && (
-                    <View style={styles.lockOverlay}>
-                      <IconButton icon="lock-outline" iconColor="white" size={28} />
-                      <Text style={styles.lockText}>Только для Premium</Text>
-                    </View>
-                  )}
-                </View>
-                <Card.Content style={styles.cardContent}>
-                  <View>
-                    <Text style={styles.cardTitle}>{item.title}</Text>
-                    <Text style={styles.cardDuration}>{item.duration}</Text>
+        <Text style={styles.sectionTitle}>Сегодняшние медитации</Text>
+
+        <FlatList
+          style={styles.list}
+          data={MEDITATIONS}
+          keyExtractor={(item) => item.id}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{ paddingBottom: 24 }}
+          renderItem={({ item }) => {
+            // Логика для проверки: если isSubscribed === false, премиум-контент визуально заблокирован (замок + переход на Paywall).
+            const showLocked = item.requiresPremium && !isSubscribed;
+            return (
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={showLocked ? goToPaywall : undefined}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: false }}
+              >
+                <Card style={styles.card}>
+                  <View
+                    style={[
+                      styles.cardImage,
+                      styles.cardImageRadius,
+                      { backgroundColor: item.color },
+                      showLocked && styles.cardImageLocked,
+                    ]}
+                  >
+                    <Text style={styles.cardEmoji}>{item.emoji}</Text>
+                    {showLocked && (
+                      <View style={styles.lockOverlay}>
+                        <IconButton icon="lock-outline" iconColor="white" size={28} />
+                        <Text style={styles.lockText}>Только для Premium</Text>
+                      </View>
+                    )}
                   </View>
-                  {!locked && (
-                    <IconButton icon="play-circle-outline" iconColor="#22c55e" size={28} />
-                  )}
-                </Card.Content>
-              </Card>
-            </TouchableOpacity>
-          );
-        }}
-      />
+                  <Card.Content style={styles.cardContent}>
+                    <View>
+                      <Text style={styles.cardTitle}>{item.title}</Text>
+                      <Text style={styles.cardDuration}>{item.duration}</Text>
+                    </View>
+                    {!showLocked && (
+                      <IconButton icon="play-circle-outline" iconColor="#22c55e" size={28} />
+                    )}
+                  </Card.Content>
+                </Card>
+              </TouchableOpacity>
+            );
+          }}
+        />
+      </View>
     </View>
   );
 };
@@ -125,7 +147,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#020617',
     paddingHorizontal: 16,
-    paddingTop: 56,
+  },
+  contentWrap: {
+    flex: 1,
+    width: '100%',
+    maxWidth: Platform.select({ web: 420, default: undefined }),
+    alignSelf: 'center',
   },
   headerRow: {
     flexDirection: 'row',
@@ -166,6 +193,9 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     marginBottom: 12,
+  },
+  list: {
+    flex: 1,
   },
   card: {
     marginBottom: 14,
